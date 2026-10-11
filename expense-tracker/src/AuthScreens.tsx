@@ -115,7 +115,7 @@ export function AuthScreen() {
 
   const title =
     mode === 'signup'
-      ? 'יצירת חשבון'
+      ? 'צור משתמש'
       : mode === 'reset'
         ? 'שכחתי סיסמה'
         : mode === 'check-email' || mode === 'reset-sent'
@@ -132,9 +132,34 @@ export function AuthScreen() {
         <Text style={styles.tagline}>מעקב הוצאות ותקציב אישי</Text>
 
         <View style={styles.card}>
-          <Text accessibilityRole="header" style={styles.title}>
-            {title}
-          </Text>
+          {mode === 'login' || mode === 'signup' ? (
+            // Login and sign-up side by side, so a new visitor sees "צור משתמש" right away.
+            <View style={styles.segment} accessibilityRole="tablist">
+              {(
+                [
+                  ['login', 'התחברות'],
+                  ['signup', 'צור משתמש'],
+                ] as const
+              ).map(([m, label]) => {
+                const selected = mode === m;
+                return (
+                  <Pressable
+                    key={m}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected }}
+                    onPress={() => !selected && switchMode(m)}
+                    style={[styles.segBtn, selected && styles.segBtnOn]}
+                  >
+                    <Text style={[styles.segText, selected && styles.segTextOn]}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : (
+            <Text accessibilityRole="header" style={styles.title}>
+              {title}
+            </Text>
+          )}
 
           {mode === 'check-email' && (
             <>
@@ -255,7 +280,7 @@ export function AuthScreen() {
                   <ActivityIndicator color="#fff" />
                 ) : (
                   <Text style={styles.primaryText}>
-                    {mode === 'login' ? 'התחברות' : mode === 'signup' ? 'יצירת חשבון' : 'שליחת קישור'}
+                    {mode === 'login' ? 'התחברות' : mode === 'signup' ? 'צור משתמש' : 'שליחת קישור'}
                   </Text>
                 )}
               </Pressable>
@@ -265,10 +290,10 @@ export function AuthScreen() {
                   <LinkButton label="שכחתי סיסמה" onPress={() => switchMode('reset')} />
                   <View style={styles.divider} />
                   <Text style={[styles.body, { textAlign: 'center' }]}>אין לך חשבון?</Text>
-                  <LinkButton label="יצירת חשבון חדש" onPress={() => switchMode('signup')} strong />
+                  <LinkButton label="צור משתמש חדש" onPress={() => switchMode('signup')} strong />
                 </>
               )}
-              {mode !== 'login' && <LinkButton label="יש לי כבר חשבון – התחברות" onPress={() => switchMode('login')} />}
+              {mode === 'reset' && <LinkButton label="חזרה להתחברות" onPress={() => switchMode('login')} />}
             </>
           )}
           {(mode === 'check-email' || mode === 'reset-sent') && error ? (
@@ -383,6 +408,11 @@ const styles = StyleSheet.create({
   appName: { fontSize: 30, fontWeight: '800', color: '#1F2933', textAlign: 'center', marginTop: 12 },
   tagline: { fontSize: 15, color: '#616E7C', textAlign: 'center', marginBottom: 24 },
   card: { backgroundColor: '#fff', borderRadius: 16, padding: 20 },
+  segment: { flexDirection: 'row-reverse', backgroundColor: '#F4F6FA', borderRadius: 12, padding: 4, marginBottom: 20 },
+  segBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
+  segBtnOn: { backgroundColor: '#1A5FD0' },
+  segText: { fontSize: 17, fontWeight: '700', color: '#323F4B' },
+  segTextOn: { color: '#fff' },
   title: { fontSize: 22, fontWeight: '800', color: '#1F2933', textAlign: 'right', marginBottom: 16 },
   label: { fontSize: 15, fontWeight: '700', color: '#1F2933', textAlign: 'right', marginBottom: 6 },
   input: {
