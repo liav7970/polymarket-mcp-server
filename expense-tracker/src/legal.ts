@@ -2,10 +2,9 @@
 // email + password accounts, data stored in Supabase, no payments, no analytics, no ads.
 // If any of that changes, these texts must be revised — ideally by a lawyer.
 
-// TODO before publishing: fill in the operator's details.
 export const OPERATOR = {
-  name: '[שם מפעיל האפליקציה]',
-  email: '[כתובת דוא״ל ליצירת קשר]',
+  name: 'ליאב',
+  email: 'liav7970@gmail.com',
 };
 
 export const APP_NAME = 'Cashio';
