@@ -38,6 +38,6 @@
 האפליקציה מתפרסמת כאתר ב-GitHub Pages ומוסיפים אותה למסך הבית:
 1. פרסום: `scripts/deploy-web.sh` (בונה ודוחף לענף `gh-pages`).
 2. פעם אחת ב-GitHub: Settings → Pages → Source: *Deploy from a branch* → `gh-pages` / `(root)` → Save.
-3. באייפון: לפתוח בספארי את כתובת האתר (`https://<user>.github.io/<repo>/`) → כפתור השיתוף → **הוסף למסך הבית**.
+3. באייפון: לפתוח בספארי את `https://liav7970.github.io/cashio/` → כפתור השיתוף → **הוסף למסך הבית**.
 
 האפליקציה עובדת גם בלי אינטרנט. הנתונים נשמרים במכשיר בלבד.
