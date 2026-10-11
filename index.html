@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="he">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Cashio – מעקב הוצאות</title>
+    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
+    <style id="expo-reset">
+      /* These styles make the body full-height */
+      html,
+      body {
+        height: 100%;
+      }
+      /* These styles disable body scrolling if you are using <ScrollView> */
+      body {
+        overflow: hidden;
+      }
+      /* These styles make the root element full-height */
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+  <link rel="icon" href="/polymarket-mcp-server/favicon.ico"/>
+    <meta name="description" content="Cashio – מעקב הוצאות ותקציב אישי, חינם וללא הרשמה. הנתונים נשמרים רק במכשיר שלך." />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" href="icon-180.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Cashio" />
+    <meta name="theme-color" content="#F4F6FA" />
+    <style>body { background: #F4F6FA; -webkit-tap-highlight-color: transparent; }</style>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
+      }
+    </script>
+  </head>
+
+  <body>
+    <!-- Use static rendering with Expo Router to support running without JavaScript. -->
+    <noscript>
+      You need to enable JavaScript to run this app.
+    </noscript>
+    <!-- The root element for your Expo app. -->
+    <div id="root"></div>
+  <script src="/polymarket-mcp-server/_expo/static/js/web/index-0a091f9d4ab500cc5fba4151381829d9.js" defer></script>
+</body>
+</html>
