@@ -26,6 +26,7 @@ import {
   loadExpenses,
   monthCategoryTotal,
   monthLabel,
+  monthShort,
   sameMonth,
   saveBudgets,
   saveExpenses,
@@ -168,12 +169,12 @@ function SummaryScreen({
       ListHeaderComponent={
         <View>
           <View style={styles.monthNav}>
-            <Pressable onPress={() => shiftMonth(1)} hitSlop={12}>
-              <Text style={styles.arrow}>‹</Text>
+            <Pressable onPress={() => shiftMonth(-1)} hitSlop={12} accessibilityLabel="חודש קודם">
+              <Text style={styles.arrow}>→</Text>
             </Pressable>
             <Text style={styles.monthTitle}>{monthLabel(year, month)}</Text>
-            <Pressable onPress={() => shiftMonth(-1)} hitSlop={12}>
-              <Text style={styles.arrow}>›</Text>
+            <Pressable onPress={() => shiftMonth(1)} hitSlop={12} accessibilityLabel="חודש הבא">
+              <Text style={styles.arrow}>←</Text>
             </Pressable>
           </View>
 
@@ -188,6 +189,16 @@ function SummaryScreen({
               </Text>
             )}
           </View>
+
+          <MonthlyTrend
+            expenses={expenses}
+            year={year}
+            month={month}
+            onSelect={(y, m) => {
+              setYear(y);
+              setMonth(m);
+            }}
+          />
 
           {byCategory.length > 0 && (
             <View style={styles.card}>
@@ -326,6 +337,100 @@ function AddScreen({ onSave }: { onSave: (e: Omit<Expense, 'id'>) => void }) {
   );
 }
 
+const TREND_MONTHS = 6;
+const CHART_HEIGHT = 120;
+
+// Bar chart of monthly totals. Oldest month on the right (RTL), the viewed month highlighted;
+// tapping a bar switches the summary to that month.
+function MonthlyTrend({
+  expenses,
+  year,
+  month,
+  onSelect,
+}: {
+  expenses: Expense[];
+  year: number;
+  month: number;
+  onSelect: (year: number, month: number) => void;
+}) {
+  const now = new Date();
+  const viewedIsOlder = year * 12 + month < now.getFullYear() * 12 + now.getMonth() - (TREND_MONTHS - 1);
+  const end = viewedIsOlder ? new Date(year, month + TREND_MONTHS - 1, 1) : new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const bars = useMemo(() => {
+    const out: { year: number; month: number; total: number }[] = [];
+    for (let i = TREND_MONTHS - 1; i >= 0; i--) {
+      const d = new Date(end.getFullYear(), end.getMonth() - i, 1);
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      const total = expenses.filter((e) => sameMonth(e.date, y, m)).reduce((s, e) => s + e.amount, 0);
+      out.push({ year: y, month: m, total });
+    }
+    return out;
+  }, [expenses, end.getFullYear(), end.getMonth()]);
+
+  const max = Math.max(...bars.map((b) => b.total));
+  if (max === 0) return null;
+
+  const idx = bars.findIndex((b) => b.year === year && b.month === month);
+  const current = bars[idx];
+  const prev = idx > 0 ? bars[idx - 1] : undefined;
+  const avg = bars.reduce((s, b) => s + b.total, 0) / bars.length;
+
+  let comparison = '';
+  if (current && prev && prev.total > 0) {
+    const pct = Math.round(((current.total - prev.total) / prev.total) * 100);
+    comparison =
+      pct === 0
+        ? `כמו ב${monthLabel(prev.year, prev.month).split(' ')[0]}`
+        : `${pct > 0 ? '▲' : '▼'} ${Math.abs(pct)}% ${pct > 0 ? 'יותר' : 'פחות'} מ${monthLabel(prev.year, prev.month).split(' ')[0]}`;
+  }
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.sectionTitle}>הוצאות ב-{TREND_MONTHS} חודשים</Text>
+      {comparison ? <Text style={[styles.text, { marginBottom: 2 }]}>{comparison}</Text> : null}
+      <Text style={[styles.subText, { marginBottom: 12 }]}>ממוצע חודשי: {formatMoney(Math.round(avg))}</Text>
+
+      <View style={styles.chartArea}>
+        {bars.map((b) => {
+          const selected = b.year === year && b.month === month;
+          const h = (b.total / max) * CHART_HEIGHT;
+          return (
+            <Pressable
+              key={`${b.year}-${b.month}`}
+              style={styles.barCol}
+              onPress={() => onSelect(b.year, b.month)}
+              accessibilityLabel={`${monthLabel(b.year, b.month)}: ${formatMoney(b.total)}`}
+            >
+              <Text style={[styles.barValue, !selected && { opacity: 0 }]} numberOfLines={1}>
+                {formatMoney(Math.round(b.total))}
+              </Text>
+              <View
+                style={[
+                  styles.trendBar,
+                  { height: Math.max(h, b.total > 0 ? 3 : 0), backgroundColor: selected ? '#1F6FEB' : '#A9C4F5' },
+                ]}
+              />
+            </Pressable>
+          );
+        })}
+      </View>
+      <View style={styles.chartBaseline} />
+      <View style={styles.chartLabels}>
+        {bars.map((b) => {
+          const selected = b.year === year && b.month === month;
+          return (
+            <Pressable key={`${b.year}-${b.month}`} style={{ flex: 1 }} onPress={() => onSelect(b.year, b.month)}>
+              <Text style={[styles.barLabel, selected && styles.barLabelSelected]}>{monthShort(b.month)}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 function BudgetScreen({
   budgets,
   expenses,
@@ -405,7 +510,7 @@ const styles = StyleSheet.create({
   tabTextActive: { color: '#fff' },
 
   monthNav: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  arrow: { fontSize: 32, color: '#1F6FEB', paddingHorizontal: 8 },
+  arrow: { fontSize: 26, color: '#1F6FEB', paddingHorizontal: 8 },
   monthTitle: { fontSize: 20, fontWeight: '700', color: '#1F2933' },
 
   totalCard: { backgroundColor: '#1F6FEB', borderRadius: 16, padding: 20, marginBottom: 16, alignItems: 'flex-end' },
@@ -466,6 +571,14 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   saveBtn: { backgroundColor: '#1F6FEB', borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
+  chartArea: { flexDirection: 'row-reverse', alignItems: 'flex-end', height: CHART_HEIGHT + 22 },
+  barCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', height: '100%' },
+  trendBar: { width: '55%', borderTopLeftRadius: 4, borderTopRightRadius: 4 },
+  barValue: { fontSize: 11, fontWeight: '700', color: '#1F2933', marginBottom: 4 },
+  chartBaseline: { height: 1, backgroundColor: '#D9E0E8' },
+  chartLabels: { flexDirection: 'row-reverse', marginTop: 6 },
+  barLabel: { textAlign: 'center', paddingVertical: 4, fontSize: 12, color: '#7B8794' },
+  barLabelSelected: { color: '#1F2933', fontWeight: '700' },
   budgetRow: {
     flexDirection: 'row-reverse',
     alignItems: 'center',

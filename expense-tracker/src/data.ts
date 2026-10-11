@@ -47,6 +47,10 @@ const MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 
 
 export const monthLabel = (year: number, month: number) => `${MONTHS[month]} ${year}`;
 
+const MONTHS_SHORT = ['ינו׳', 'פבר׳', 'מרץ', 'אפר׳', 'מאי', 'יוני', 'יולי', 'אוג׳', 'ספט׳', 'אוק׳', 'נוב׳', 'דצמ׳'];
+
+export const monthShort = (month: number) => MONTHS_SHORT[month];
+
 export const formatDay = (iso: string) => {
   const d = new Date(iso);
   return `${d.getDate()}/${d.getMonth() + 1}`;
