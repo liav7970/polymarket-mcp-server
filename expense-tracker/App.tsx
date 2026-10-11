@@ -14,26 +14,35 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import {
+  Budgets,
   CATEGORIES,
   Expense,
+  LEVEL_COLOR,
+  budgetLevel,
   categoryById,
   formatDay,
   formatMoney,
+  loadBudgets,
   loadExpenses,
+  monthCategoryTotal,
   monthLabel,
+  sameMonth,
+  saveBudgets,
   saveExpenses,
 } from './src/data';
 
-type Tab = 'summary' | 'add';
+type Tab = 'summary' | 'add' | 'budget';
 
 export default function App() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [budgets, setBudgets] = useState<Budgets>({});
   const [loaded, setLoaded] = useState(false);
   const [tab, setTab] = useState<Tab>('summary');
 
   useEffect(() => {
-    loadExpenses().then((e) => {
+    Promise.all([loadExpenses(), loadBudgets()]).then(([e, b]) => {
       setExpenses(e);
+      setBudgets(b);
       setLoaded(true);
     });
   }, []);
@@ -42,9 +51,36 @@ export default function App() {
     if (loaded) saveExpenses(expenses);
   }, [expenses, loaded]);
 
+  useEffect(() => {
+    if (loaded) saveBudgets(budgets);
+  }, [budgets, loaded]);
+
   const addExpense = (e: Omit<Expense, 'id'>) => {
     setExpenses((prev) => [{ ...e, id: Date.now().toString() }, ...prev]);
     setTab('summary');
+    warnIfOverBudget(e);
+  };
+
+  const warnIfOverBudget = (e: Omit<Expense, 'id'>) => {
+    const budget = budgets[e.categoryId];
+    if (!budget) return;
+    const d = new Date(e.date);
+    const before = monthCategoryTotal(expenses, e.categoryId, d.getFullYear(), d.getMonth());
+    const after = before + e.amount;
+    const cat = categoryById(e.categoryId);
+    const levelBefore = budgetLevel(before, budget);
+    const levelAfter = budgetLevel(after, budget);
+    if (levelAfter === 'over') {
+      Alert.alert(
+        `🚨 חרגת מהתקציב: ${cat.name}`,
+        `הוצאת החודש ${formatMoney(after)} מתוך ${formatMoney(budget)} (חריגה של ${formatMoney(after - budget)}).`,
+      );
+    } else if (levelAfter === 'warn' && levelBefore === 'ok') {
+      Alert.alert(
+        `⚠️ מתקרב לגבול: ${cat.name}`,
+        `ניצלת ${Math.round((after / budget) * 100)}% מהתקציב. נשארו ${formatMoney(budget - after)} עד סוף החודש.`,
+      );
+    }
   };
 
   const deleteExpense = (id: string) => {
@@ -59,15 +95,23 @@ export default function App() {
       <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
         <StatusBar style="dark" />
         <View style={styles.content}>
-          {tab === 'summary' ? (
-            <SummaryScreen expenses={expenses} onDelete={deleteExpense} />
-          ) : (
-            <AddScreen onSave={addExpense} />
+          {tab === 'summary' && <SummaryScreen expenses={expenses} budgets={budgets} onDelete={deleteExpense} />}
+          {tab === 'add' && <AddScreen onSave={addExpense} />}
+          {tab === 'budget' && (
+            <BudgetScreen
+              budgets={budgets}
+              expenses={expenses}
+              onSave={(b) => {
+                setBudgets(b);
+                setTab('summary');
+              }}
+            />
           )}
         </View>
         <View style={styles.tabBar}>
           <TabButton label="📊 סיכום" active={tab === 'summary'} onPress={() => setTab('summary')} />
-          <TabButton label="➕ הוצאה חדשה" active={tab === 'add'} onPress={() => setTab('add')} />
+          <TabButton label="➕ הוספה" active={tab === 'add'} onPress={() => setTab('add')} />
+          <TabButton label="🎯 תקציב" active={tab === 'budget'} onPress={() => setTab('budget')} />
         </View>
       </SafeAreaView>
     </SafeAreaProvider>
@@ -82,7 +126,15 @@ function TabButton({ label, active, onPress }: { label: string; active: boolean;
   );
 }
 
-function SummaryScreen({ expenses, onDelete }: { expenses: Expense[]; onDelete: (id: string) => void }) {
+function SummaryScreen({
+  expenses,
+  budgets,
+  onDelete,
+}: {
+  expenses: Expense[];
+  budgets: Budgets;
+  onDelete: (id: string) => void;
+}) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
@@ -93,22 +145,20 @@ function SummaryScreen({ expenses, onDelete }: { expenses: Expense[]; onDelete: 
     setMonth(d.getMonth());
   };
 
-  const monthly = useMemo(
-    () =>
-      expenses.filter((e) => {
-        const d = new Date(e.date);
-        return d.getFullYear() === year && d.getMonth() === month;
-      }),
-    [expenses, year, month],
-  );
+  const monthly = useMemo(() => expenses.filter((e) => sameMonth(e.date, year, month)), [expenses, year, month]);
 
   const total = monthly.reduce((s, e) => s + e.amount, 0);
+  const totalBudget = Object.values(budgets).reduce((s, b) => s + b, 0);
 
+  // Categories with spending or with a budget, so an unused budget still shows up.
   const byCategory = useMemo(() => {
     const sums = new Map<string, number>();
+    Object.keys(budgets).forEach((id) => sums.set(id, 0));
     monthly.forEach((e) => sums.set(e.categoryId, (sums.get(e.categoryId) ?? 0) + e.amount));
-    return [...sums.entries()].map(([id, sum]) => ({ cat: categoryById(id), sum })).sort((a, b) => b.sum - a.sum);
-  }, [monthly]);
+    return [...sums.entries()]
+      .map(([id, sum]) => ({ cat: categoryById(id), sum, budget: budgets[id] as number | undefined }))
+      .sort((a, b) => b.sum - a.sum);
+  }, [monthly, budgets]);
 
   return (
     <FlatList
@@ -130,24 +180,55 @@ function SummaryScreen({ expenses, onDelete }: { expenses: Expense[]; onDelete: 
           <View style={styles.totalCard}>
             <Text style={styles.totalLabel}>סה״כ הוצאות החודש</Text>
             <Text style={styles.totalValue}>{formatMoney(total)}</Text>
+            {totalBudget > 0 && (
+              <Text style={styles.totalSub}>
+                {total <= totalBudget
+                  ? `נשארו ${formatMoney(totalBudget - total)} מתוך תקציב של ${formatMoney(totalBudget)}`
+                  : `חריגה של ${formatMoney(total - totalBudget)} מתקציב של ${formatMoney(totalBudget)}`}
+              </Text>
+            )}
           </View>
 
           {byCategory.length > 0 && (
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>לפי קטגוריה</Text>
-              {byCategory.map(({ cat, sum }) => (
-                <View key={cat.id} style={{ marginBottom: 10 }}>
-                  <View style={styles.rowBetween}>
-                    <Text style={styles.text}>
-                      {cat.emoji} {cat.name}
-                    </Text>
-                    <Text style={styles.textBold}>{formatMoney(sum)}</Text>
+              {byCategory.map(({ cat, sum, budget }) => {
+                // With a budget the bar shows budget usage, otherwise share of the month's total.
+                const level = budget ? budgetLevel(sum, budget) : null;
+                const ratio = budget ? sum / budget : total ? sum / total : 0;
+                return (
+                  <View key={cat.id} style={{ marginBottom: 12 }}>
+                    <View style={styles.rowBetween}>
+                      <Text style={styles.text}>
+                        {cat.emoji} {cat.name}
+                        {level === 'warn' ? '  ⚠️' : level === 'over' ? '  🚨' : ''}
+                      </Text>
+                      <Text style={[styles.textBold, level && level !== 'ok' && { color: LEVEL_COLOR[level] }]}>
+                        {formatMoney(sum)}
+                        {budget ? <Text style={styles.subText}> / {formatMoney(budget)}</Text> : null}
+                      </Text>
+                    </View>
+                    <View style={styles.barTrack}>
+                      <View
+                        style={[
+                          styles.barFill,
+                          {
+                            width: `${Math.min(ratio, 1) * 100}%`,
+                            backgroundColor: level ? LEVEL_COLOR[level] : cat.color,
+                          },
+                        ]}
+                      />
+                    </View>
+                    {budget ? (
+                      <Text style={[styles.subText, level !== 'ok' && { color: LEVEL_COLOR[level!] }]}>
+                        {sum <= budget
+                          ? `נשארו ${formatMoney(budget - sum)}`
+                          : `חריגה של ${formatMoney(sum - budget)}`}
+                      </Text>
+                    ) : null}
                   </View>
-                  <View style={styles.barTrack}>
-                    <View style={[styles.barFill, { width: `${(sum / total) * 100}%`, backgroundColor: cat.color }]} />
-                  </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
           )}
 
@@ -245,6 +326,68 @@ function AddScreen({ onSave }: { onSave: (e: Omit<Expense, 'id'>) => void }) {
   );
 }
 
+function BudgetScreen({
+  budgets,
+  expenses,
+  onSave,
+}: {
+  budgets: Budgets;
+  expenses: Expense[];
+  onSave: (b: Budgets) => void;
+}) {
+  const now = new Date();
+  const [draft, setDraft] = useState<Record<string, string>>(() =>
+    Object.fromEntries(CATEGORIES.map((c) => [c.id, budgets[c.id] ? String(budgets[c.id]) : ''])),
+  );
+
+  const save = () => {
+    const next: Budgets = {};
+    for (const [id, text] of Object.entries(draft)) {
+      const value = parseFloat(text.replace(',', '.'));
+      if (value > 0) next[id] = value;
+    }
+    onSave(next);
+  };
+
+  return (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
+        <Text style={styles.sectionTitle}>תקציב חודשי לכל קטגוריה</Text>
+        <Text style={[styles.subText, { marginBottom: 16 }]}>
+          השאר ריק לקטגוריה בלי תקציב. תקבל התראה כשתגיע ל-80% וכשתחרוג.
+        </Text>
+        {CATEGORIES.map((c) => {
+          const spent = monthCategoryTotal(expenses, c.id, now.getFullYear(), now.getMonth());
+          return (
+            <View key={c.id} style={styles.budgetRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.textBold}>
+                  {c.emoji} {c.name}
+                </Text>
+                <Text style={styles.subText}>החודש: {formatMoney(spent)}</Text>
+              </View>
+              <View style={styles.budgetInputBox}>
+                <Text style={styles.subText}>₪</Text>
+                <TextInput
+                  style={styles.budgetInput}
+                  value={draft[c.id]}
+                  onChangeText={(t) => setDraft((d) => ({ ...d, [c.id]: t }))}
+                  keyboardType="decimal-pad"
+                  placeholder="ללא"
+                  placeholderTextColor="#B8C2CC"
+                />
+              </View>
+            </View>
+          );
+        })}
+        <Pressable style={[styles.saveBtn, { marginTop: 12 }]} onPress={save}>
+          <Text style={styles.saveText}>שמירת תקציב</Text>
+        </Pressable>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#F4F6FA' },
   content: { flex: 1 },
@@ -268,6 +411,7 @@ const styles = StyleSheet.create({
   totalCard: { backgroundColor: '#1F6FEB', borderRadius: 16, padding: 20, marginBottom: 16, alignItems: 'flex-end' },
   totalLabel: { color: '#DCE8FF', fontSize: 14 },
   totalValue: { color: '#fff', fontSize: 34, fontWeight: '800', marginTop: 4 },
+  totalSub: { color: '#DCE8FF', fontSize: 14, marginTop: 6 },
 
   card: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 16 },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#1F2933', marginBottom: 10, textAlign: 'right' },
@@ -322,5 +466,23 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   saveBtn: { backgroundColor: '#1F6FEB', borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
+  budgetRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 8,
+    gap: 12,
+  },
+  budgetInputBox: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    backgroundColor: '#F4F6FA',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    width: 120,
+  },
+  budgetInput: { flex: 1, fontSize: 17, fontWeight: '700', color: '#1F2933', paddingVertical: 8, textAlign: 'right' },
   saveText: { color: '#fff', fontSize: 18, fontWeight: '700' },
 });

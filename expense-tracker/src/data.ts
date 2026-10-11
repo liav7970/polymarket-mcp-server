@@ -51,3 +51,40 @@ export const formatDay = (iso: string) => {
   const d = new Date(iso);
   return `${d.getDate()}/${d.getMonth() + 1}`;
 };
+
+// Monthly budget per category, same amount every month. Missing key = no budget.
+export type Budgets = Record<string, number>;
+
+const BUDGETS_KEY = 'budgets:v1';
+
+export async function loadBudgets(): Promise<Budgets> {
+  try {
+    const raw = await AsyncStorage.getItem(BUDGETS_KEY);
+    return raw ? (JSON.parse(raw) as Budgets) : {};
+  } catch {
+    return {};
+  }
+}
+
+export async function saveBudgets(budgets: Budgets) {
+  await AsyncStorage.setItem(BUDGETS_KEY, JSON.stringify(budgets));
+}
+
+export const WARN_RATIO = 0.8;
+
+export type BudgetLevel = 'ok' | 'warn' | 'over';
+
+export const budgetLevel = (spent: number, budget: number): BudgetLevel =>
+  spent > budget ? 'over' : spent >= budget * WARN_RATIO ? 'warn' : 'ok';
+
+export const LEVEL_COLOR: Record<BudgetLevel, string> = { ok: '#2BB673', warn: '#F08C00', over: '#D9534F' };
+
+export const sameMonth = (iso: string, year: number, month: number) => {
+  const d = new Date(iso);
+  return d.getFullYear() === year && d.getMonth() === month;
+};
+
+export const monthCategoryTotal = (expenses: Expense[], categoryId: string, year: number, month: number) =>
+  expenses
+    .filter((e) => e.categoryId === categoryId && sameMonth(e.date, year, month))
+    .reduce((s, e) => s + e.amount, 0);
