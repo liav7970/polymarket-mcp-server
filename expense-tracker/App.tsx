@@ -21,6 +21,8 @@ import {
   budgetLevel,
   categoryById,
   formatDay,
+  formatFullDay,
+  isSameDay,
   formatMoney,
   loadBudgets,
   loadExpenses,
@@ -39,6 +41,12 @@ export default function App() {
   const [budgets, setBudgets] = useState<Budgets>({});
   const [loaded, setLoaded] = useState(false);
   const [tab, setTab] = useState<Tab>('summary');
+  const [editing, setEditing] = useState<Expense | null>(null);
+
+  const goTo = (t: Tab) => {
+    setEditing(null);
+    setTab(t);
+  };
 
   useEffect(() => {
     Promise.all([loadExpenses(), loadBudgets()]).then(([e, b]) => {
@@ -56,17 +64,24 @@ export default function App() {
     if (loaded) saveBudgets(budgets);
   }, [budgets, loaded]);
 
-  const addExpense = (e: Omit<Expense, 'id'>) => {
-    setExpenses((prev) => [{ ...e, id: Date.now().toString() }, ...prev]);
-    setTab('summary');
-    warnIfOverBudget(e);
+  const saveExpense = (e: Omit<Expense, 'id'>) => {
+    const editedId = editing?.id;
+    if (editedId) {
+      setExpenses((prev) => prev.map((x) => (x.id === editedId ? { ...e, id: editedId } : x)));
+    } else {
+      setExpenses((prev) => [{ ...e, id: Date.now().toString() }, ...prev]);
+    }
+    goTo('summary');
+    warnIfOverBudget(e, editedId);
   };
 
-  const warnIfOverBudget = (e: Omit<Expense, 'id'>) => {
+  // excludeId: when editing, the expense's old version must not count toward "before".
+  const warnIfOverBudget = (e: Omit<Expense, 'id'>, excludeId?: string) => {
     const budget = budgets[e.categoryId];
     if (!budget) return;
     const d = new Date(e.date);
-    const before = monthCategoryTotal(expenses, e.categoryId, d.getFullYear(), d.getMonth());
+    const others = excludeId ? expenses.filter((x) => x.id !== excludeId) : expenses;
+    const before = monthCategoryTotal(others, e.categoryId, d.getFullYear(), d.getMonth());
     const after = before + e.amount;
     const cat = categoryById(e.categoryId);
     const levelBefore = budgetLevel(before, budget);
@@ -87,8 +102,20 @@ export default function App() {
   const deleteExpense = (id: string) => {
     Alert.alert('מחיקת הוצאה', 'למחוק את ההוצאה הזו?', [
       { text: 'ביטול', style: 'cancel' },
-      { text: 'מחק', style: 'destructive', onPress: () => setExpenses((p) => p.filter((x) => x.id !== id)) },
+      {
+        text: 'מחק',
+        style: 'destructive',
+        onPress: () => {
+          setExpenses((p) => p.filter((x) => x.id !== id));
+          if (editing?.id === id) goTo('summary');
+        },
+      },
     ]);
+  };
+
+  const startEdit = (e: Expense) => {
+    setEditing(e);
+    setTab('add');
   };
 
   return (
@@ -96,23 +123,37 @@ export default function App() {
       <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
         <StatusBar style="dark" />
         <View style={styles.content}>
-          {tab === 'summary' && <SummaryScreen expenses={expenses} budgets={budgets} onDelete={deleteExpense} />}
-          {tab === 'add' && <AddScreen onSave={addExpense} />}
+          {tab === 'summary' && (
+            <SummaryScreen expenses={expenses} budgets={budgets} onEdit={startEdit} onDelete={deleteExpense} />
+          )}
+          {tab === 'add' && (
+            <AddScreen
+              key={editing?.id ?? 'new'}
+              initial={editing}
+              onSave={saveExpense}
+              onDelete={editing ? () => deleteExpense(editing.id) : undefined}
+              onCancel={editing ? () => goTo('summary') : undefined}
+            />
+          )}
           {tab === 'budget' && (
             <BudgetScreen
               budgets={budgets}
               expenses={expenses}
               onSave={(b) => {
                 setBudgets(b);
-                setTab('summary');
+                goTo('summary');
               }}
             />
           )}
         </View>
         <View style={styles.tabBar}>
-          <TabButton label="📊 סיכום" active={tab === 'summary'} onPress={() => setTab('summary')} />
-          <TabButton label="➕ הוספה" active={tab === 'add'} onPress={() => setTab('add')} />
-          <TabButton label="🎯 תקציב" active={tab === 'budget'} onPress={() => setTab('budget')} />
+          <TabButton label="📊 סיכום" active={tab === 'summary'} onPress={() => goTo('summary')} />
+          <TabButton
+            label={editing ? '✏️ עריכה' : '➕ הוספה'}
+            active={tab === 'add'}
+            onPress={() => goTo('add')}
+          />
+          <TabButton label="🎯 תקציב" active={tab === 'budget'} onPress={() => goTo('budget')} />
         </View>
       </SafeAreaView>
     </SafeAreaProvider>
@@ -130,10 +171,12 @@ function TabButton({ label, active, onPress }: { label: string; active: boolean;
 function SummaryScreen({
   expenses,
   budgets,
+  onEdit,
   onDelete,
 }: {
   expenses: Expense[];
   budgets: Budgets;
+  onEdit: (e: Expense) => void;
   onDelete: (id: string) => void;
 }) {
   const now = new Date();
@@ -146,7 +189,14 @@ function SummaryScreen({
     setMonth(d.getMonth());
   };
 
-  const monthly = useMemo(() => expenses.filter((e) => sameMonth(e.date, year, month)), [expenses, year, month]);
+  // Newest first by expense date, not by entry order (an expense can be backdated).
+  const monthly = useMemo(
+    () =>
+      expenses
+        .filter((e) => sameMonth(e.date, year, month))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [expenses, year, month],
+  );
 
   const total = monthly.reduce((s, e) => s + e.amount, 0);
   const totalBudget = Object.values(budgets).reduce((s, b) => s + b, 0);
@@ -244,8 +294,11 @@ function SummaryScreen({
           )}
 
           <Text style={[styles.sectionTitle, { marginTop: 8 }]}>
-            {monthly.length ? 'כל ההוצאות (לחיצה ארוכה למחיקה)' : ''}
+            {monthly.length ? 'כל ההוצאות' : ''}
           </Text>
+          {monthly.length ? (
+            <Text style={[styles.subText, { marginTop: -6, marginBottom: 10 }]}>לחיצה לעריכה · לחיצה ארוכה למחיקה</Text>
+          ) : null}
         </View>
       }
       ListEmptyComponent={
@@ -254,7 +307,7 @@ function SummaryScreen({
       renderItem={({ item }) => {
         const cat = categoryById(item.categoryId);
         return (
-          <Pressable onLongPress={() => onDelete(item.id)} style={styles.expenseRow}>
+          <Pressable onPress={() => onEdit(item)} onLongPress={() => onDelete(item.id)} style={styles.expenseRow}>
             <View style={[styles.emojiBubble, { backgroundColor: cat.color + '22' }]}>
               <Text style={{ fontSize: 20 }}>{cat.emoji}</Text>
             </View>
@@ -272,10 +325,32 @@ function SummaryScreen({
   );
 }
 
-function AddScreen({ onSave }: { onSave: (e: Omit<Expense, 'id'>) => void }) {
-  const [amount, setAmount] = useState('');
-  const [categoryId, setCategoryId] = useState(CATEGORIES[0].id);
-  const [note, setNote] = useState('');
+function AddScreen({
+  initial,
+  onSave,
+  onDelete,
+  onCancel,
+}: {
+  initial: Expense | null;
+  onSave: (e: Omit<Expense, 'id'>) => void;
+  onDelete?: () => void;
+  onCancel?: () => void;
+}) {
+  const [amount, setAmount] = useState(initial ? String(initial.amount) : '');
+  const [categoryId, setCategoryId] = useState(initial?.categoryId ?? CATEGORIES[0].id);
+  const [note, setNote] = useState(initial?.note ?? '');
+  const [date, setDate] = useState(() => (initial ? new Date(initial.date) : new Date()));
+
+  const today = new Date();
+  const isToday = isSameDay(date, today);
+
+  // Keeps the time of day, only moves the calendar day. Future days are not allowed.
+  const setDay = (base: Date, deltaDays: number) => {
+    const d = new Date(date);
+    d.setFullYear(base.getFullYear(), base.getMonth(), base.getDate() + deltaDays);
+    if (d.getTime() > Date.now() && !isSameDay(d, today)) return;
+    setDate(d);
+  };
 
   const save = () => {
     const value = parseFloat(amount.replace(',', '.'));
@@ -283,7 +358,7 @@ function AddScreen({ onSave }: { onSave: (e: Omit<Expense, 'id'>) => void }) {
       Alert.alert('סכום לא תקין', 'נא להזין סכום גדול מאפס');
       return;
     }
-    onSave({ amount: value, categoryId, note: note.trim(), date: new Date().toISOString() });
+    onSave({ amount: value, categoryId, note: note.trim(), date: date.toISOString() });
   };
 
   return (
@@ -299,7 +374,7 @@ function AddScreen({ onSave }: { onSave: (e: Omit<Expense, 'id'>) => void }) {
             keyboardType="decimal-pad"
             placeholder="0"
             placeholderTextColor="#B8C2CC"
-            autoFocus
+            autoFocus={!initial}
           />
         </View>
 
@@ -320,6 +395,41 @@ function AddScreen({ onSave }: { onSave: (e: Omit<Expense, 'id'>) => void }) {
           })}
         </View>
 
+        <Text style={styles.sectionTitle}>תאריך</Text>
+        <View style={styles.dateBox}>
+          <Pressable onPress={() => setDay(date, -1)} hitSlop={10} accessibilityLabel="יום קודם">
+            <Text style={styles.arrow}>→</Text>
+          </Pressable>
+          <Text style={styles.dateText}>{formatFullDay(date)}</Text>
+          <Pressable
+            onPress={() => setDay(date, 1)}
+            hitSlop={10}
+            disabled={isToday}
+            accessibilityLabel="יום הבא"
+            style={isToday && { opacity: 0.25 }}
+          >
+            <Text style={styles.arrow}>←</Text>
+          </Pressable>
+        </View>
+        <View style={styles.quickDates}>
+          {[
+            { label: 'היום', delta: 0 },
+            { label: 'אתמול', delta: -1 },
+            { label: 'שלשום', delta: -2 },
+          ].map(({ label, delta }) => {
+            const selected = isSameDay(date, new Date(today.getFullYear(), today.getMonth(), today.getDate() + delta));
+            return (
+              <Pressable
+                key={label}
+                onPress={() => setDay(today, delta)}
+                style={[styles.quickChip, selected && styles.quickChipSelected]}
+              >
+                <Text style={[styles.quickChipText, selected && styles.quickChipTextSelected]}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
         <Text style={styles.sectionTitle}>הערה (לא חובה)</Text>
         <TextInput
           style={styles.noteInput}
@@ -330,8 +440,18 @@ function AddScreen({ onSave }: { onSave: (e: Omit<Expense, 'id'>) => void }) {
         />
 
         <Pressable style={styles.saveBtn} onPress={save}>
-          <Text style={styles.saveText}>שמירה</Text>
+          <Text style={styles.saveText}>{initial ? 'שמירת שינויים' : 'שמירה'}</Text>
         </Pressable>
+        {onCancel && (
+          <Pressable style={styles.secondaryBtn} onPress={onCancel}>
+            <Text style={styles.secondaryText}>ביטול</Text>
+          </Pressable>
+        )}
+        {onDelete && (
+          <Pressable style={styles.secondaryBtn} onPress={onDelete}>
+            <Text style={[styles.secondaryText, { color: '#D9534F' }]}>🗑 מחיקת ההוצאה</Text>
+          </Pressable>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -571,6 +691,24 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   saveBtn: { backgroundColor: '#1F6FEB', borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
+  dateBox: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginBottom: 10,
+  },
+  dateText: { fontSize: 16, fontWeight: '700', color: '#1F2933' },
+  quickDates: { flexDirection: 'row-reverse', gap: 8, marginBottom: 20 },
+  quickChip: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, backgroundColor: '#fff' },
+  quickChipSelected: { backgroundColor: '#1F6FEB' },
+  quickChipText: { fontSize: 14, color: '#52606D', fontWeight: '600' },
+  quickChipTextSelected: { color: '#fff' },
+  secondaryBtn: { paddingVertical: 14, alignItems: 'center', marginTop: 8 },
+  secondaryText: { fontSize: 16, color: '#52606D', fontWeight: '600' },
   chartArea: { flexDirection: 'row-reverse', alignItems: 'flex-end', height: CHART_HEIGHT + 22 },
   barCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', height: '100%' },
   trendBar: { width: '55%', borderTopLeftRadius: 4, borderTopRightRadius: 4 },

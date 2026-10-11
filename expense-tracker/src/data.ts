@@ -51,6 +51,18 @@ const MONTHS_SHORT = ['ינו׳', 'פבר׳', 'מרץ', 'אפר׳', 'מאי', '�
 
 export const monthShort = (month: number) => MONTHS_SHORT[month];
 
+const WEEKDAYS = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
+
+export const isSameDay = (a: Date, b: Date) =>
+  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+export const formatFullDay = (d: Date) => {
+  const today = new Date();
+  const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+  const prefix = isSameDay(d, today) ? 'היום, ' : isSameDay(d, yesterday) ? 'אתמול, ' : '';
+  return `${prefix}יום ${WEEKDAYS[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+};
+
 export const formatDay = (iso: string) => {
   const d = new Date(iso);
   return `${d.getDate()}/${d.getMonth() + 1}`;
