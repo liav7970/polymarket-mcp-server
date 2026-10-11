@@ -167,6 +167,9 @@ export function AuthScreen() {
                 שלחנו מייל אימות אל <Text style={styles.bold}>{cleanEmail}</Text>. לחץ על הקישור שבמייל כדי להפעיל את
                 החשבון, ואז התחבר כאן.
               </Text>
+              <Text style={[styles.body, { marginTop: 8 }]}>
+                אחרי הלחיצה על הקישור, גם אם נפתח דף שלא נטען – החשבון כבר אומת. חזור לכאן והתחבר.
+              </Text>
               <Text style={[styles.body, { marginTop: 8 }]}>לא הגיע? בדוק בתיקיית הספאם.</Text>
               <LinkButton label="שליחה חוזרת של המייל" onPress={resendConfirmation} disabled={busy} />
               <LinkButton label="חזרה להתחברות" onPress={() => switchMode('login')} />
