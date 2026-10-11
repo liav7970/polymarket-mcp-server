@@ -513,7 +513,7 @@ function InfoScreen({ onDeleteAll }: { onDeleteAll: () => void }) {
         {APP_NAME}
       </Text>
       <Text style={[styles.docBody, { marginBottom: 16 }]}>
-        אפליקציה חינמית לניהול הוצאות אישיות. ללא הרשמה, ללא תשלום וללא איסוף מידע: כל הנתונים נשמרים רק במכשיר שלך.
+        מעקב הוצאות ותקציב אישי, חינם. ללא הרשמה, ללא תשלום וללא איסוף מידע: כל הנתונים נשמרים רק במכשיר שלך.
       </Text>
 
       <View style={styles.card}>

@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "מעקב הוצאות",
-    "slug": "expense-tracker",
+    "name": "Cashio",
+    "slug": "cashio",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.liav7970.expensetracker"
+      "bundleIdentifier": "com.liav7970.cashio"
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +18,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.liav7970.expensetracker"
+      "package": "com.liav7970.cashio"
     },
     "web": {
       "favicon": "./assets/favicon.png"

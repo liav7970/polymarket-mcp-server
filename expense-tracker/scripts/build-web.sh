@@ -12,15 +12,17 @@ import re
 p = 'dist/index.html'
 s = open(p, encoding='utf-8').read()
 s = s.replace('<html lang="en">', '<html lang="he">')
+s = re.sub(r'<title>.*?</title>', '<title>Cashio – מעקב הוצאות</title>', s)
+head_desc = '\n    <meta name="description" content="Cashio – מעקב הוצאות ותקציב אישי, חינם וללא הרשמה. הנתונים נשמרים רק במכשיר שלך." />'
 # Relative paths so the app works from any sub-path.
 s = re.sub(r'<link rel="icon" href="/favicon.ico"/>', '<link rel="icon" href="favicon.ico"/>', s)
-head = '''
+head = head_desc + '''
     <link rel="manifest" href="manifest.json" />
     <link rel="apple-touch-icon" href="icon-180.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="הוצאות" />
+    <meta name="apple-mobile-web-app-title" content="Cashio" />
     <meta name="theme-color" content="#F4F6FA" />
     <style>body { background: #F4F6FA; -webkit-tap-highlight-color: transparent; }</style>
     <script>

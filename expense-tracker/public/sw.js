@@ -1,6 +1,6 @@
 // Offline support for the home-screen app. Hashed bundles under _expo/ never change, so they are
 // served from cache first; everything else is network-first so a new deploy shows up on next open.
-const CACHE = 'expenses-v1';
+const CACHE = 'cashio-v1';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));

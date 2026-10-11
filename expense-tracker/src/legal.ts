@@ -8,7 +8,7 @@ export const OPERATOR = {
   email: '[כתובת דוא״ל ליצירת קשר]',
 };
 
-export const APP_NAME = 'מעקב הוצאות';
+export const APP_NAME = 'Cashio';
 export const LAST_UPDATED = '11/10/2026';
 
 export type LegalDoc = { id: string; title: string; sections: { heading: string; body: string }[] };
