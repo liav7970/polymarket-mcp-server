@@ -8,10 +8,9 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from 'react-native';
+import { A11yButton, A11yProvider, Text, TextInput } from './src/a11y';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import {
   Budgets,
@@ -75,13 +74,19 @@ export default function App() {
   else if (!session) content = <AuthScreen />;
   else content = <MainApp key={session.user.id} userId={session.user.id} email={session.user.email ?? ''} />;
 
+  // Inside the app the button sits above the tab bar (rendered by MainApp); elsewhere, here.
+  const hasTabBar = Boolean(isSupabaseConfigured && session && !recovering);
+
   return (
-    <SafeAreaProvider>
-      <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-        <StatusBar style="dark" />
-        {content}
-      </SafeAreaView>
-    </SafeAreaProvider>
+    <A11yProvider>
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+          <StatusBar style="dark" />
+          {content}
+          {!hasTabBar && <A11yButton style={{ bottom: 16 }} />}
+        </SafeAreaView>
+      </SafeAreaProvider>
+    </A11yProvider>
   );
 }
 
@@ -246,6 +251,7 @@ function MainApp({ userId, email }: { userId: string; email: string }) {
         )}
       </View>
       <View style={styles.tabBar}>
+        <A11yButton style={{ bottom: '100%', marginBottom: 12 }} />
         <TabButton label="📊 סיכום" active={tab === 'summary'} onPress={() => goTo('summary')} />
         <TabButton label={editing ? '✏️ עריכה' : '➕ הוספה'} active={tab === 'add'} onPress={() => goTo('add')} />
         <TabButton label="🎯 תקציב" active={tab === 'budget'} onPress={() => goTo('budget')} />
@@ -263,7 +269,13 @@ function TabButton({ label, active, onPress }: { label: string; active: boolean;
       style={[styles.tabBtn, active && styles.tabBtnActive]}
       onPress={onPress}
     >
-      <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
+      {/* Icon above the word, so large text sizes still fit four tabs on one row. */}
+      <Text style={styles.tabIcon} accessible={false}>
+        {label.split(' ')[0]}
+      </Text>
+      <Text style={[styles.tabText, active && styles.tabTextActive]} numberOfLines={1}>
+        {label.split(' ').slice(1).join(' ')}
+      </Text>
     </Pressable>
   );
 }
@@ -832,9 +844,10 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#D9E0E8',
   },
-  tabBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+  tabBtn: { flex: 1, paddingVertical: 8, borderRadius: 12, alignItems: 'center' },
+  tabIcon: { fontSize: 18 },
   tabBtnActive: { backgroundColor: '#1A5FD0' },
-  tabText: { fontSize: 14, color: '#52606D', fontWeight: '600' },
+  tabText: { fontSize: 13, marginTop: 2, color: '#52606D', fontWeight: '600' },
   tabTextActive: { color: '#fff' },
 
   monthNav: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },

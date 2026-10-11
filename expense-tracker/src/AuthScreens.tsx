@@ -6,10 +6,9 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from 'react-native';
+import { Text, TextInput } from './a11y';
 import { APP_NAME, LAST_UPDATED, LEGAL_DOCS, LegalDoc } from './legal';
 import { LegalDocView } from './LegalDocView';
 import { authRedirectUrl, supabase } from './supabase';

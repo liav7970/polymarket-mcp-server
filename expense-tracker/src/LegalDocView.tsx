@@ -1,4 +1,5 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from './a11y';
 import { LAST_UPDATED, LegalDoc } from './legal';
 
 export function LegalDocView({ doc, onBack }: { doc: LegalDoc; onBack: () => void }) {
