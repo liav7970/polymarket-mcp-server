@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 rm -rf dist
-npx expo export --platform web --output-dir dist
+npx expo export --platform web --output-dir dist --clear
 
 python3 - <<'PY'
 import re
