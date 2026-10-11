@@ -22,28 +22,45 @@ export const CATEGORIES: Category[] = [
   { id: 'other', name: 'אחר', emoji: '📦', color: '#8395A7' },
 ];
 
-export const categoryById = (id: string) =>
-  CATEGORIES.find((c) => c.id === id) ?? CATEGORIES[CATEGORIES.length - 1];
+export const categoryById = (id: string) => CATEGORIES.find((c) => c.id === id) ?? CATEGORIES[CATEGORIES.length - 1];
 
-const KEY = 'expenses:v1';
+// Local cache per signed-in user, so the app opens instantly and works for reading offline.
+// The server (src/remote.ts) is the source of truth.
+const expensesKey = (userId: string) => `expenses:${userId}`;
 
-export async function loadExpenses(): Promise<Expense[]> {
+export async function loadExpenses(userId: string): Promise<Expense[]> {
   try {
-    const raw = await AsyncStorage.getItem(KEY);
+    const raw = await AsyncStorage.getItem(expensesKey(userId));
     return raw ? (JSON.parse(raw) as Expense[]) : [];
   } catch {
     return [];
   }
 }
 
-export async function saveExpenses(expenses: Expense[]) {
-  await AsyncStorage.setItem(KEY, JSON.stringify(expenses));
+export async function saveExpenses(userId: string, expenses: Expense[]) {
+  await AsyncStorage.setItem(expensesKey(userId), JSON.stringify(expenses));
 }
 
-export const formatMoney = (n: number) =>
-  '₪' + n.toLocaleString('he-IL', { maximumFractionDigits: 2 });
+export async function clearLocalCache(userId: string) {
+  await AsyncStorage.multiRemove([expensesKey(userId), budgetsKey(userId)]);
+}
 
-const MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+export const formatMoney = (n: number) => '₪' + n.toLocaleString('he-IL', { maximumFractionDigits: 2 });
+
+const MONTHS = [
+  'ינואר',
+  'פברואר',
+  'מרץ',
+  'אפריל',
+  'מאי',
+  'יוני',
+  'יולי',
+  'אוגוסט',
+  'ספטמבר',
+  'אוקטובר',
+  'נובמבר',
+  'דצמבר',
+];
 
 export const monthLabel = (year: number, month: number) => `${MONTHS[month]} ${year}`;
 
@@ -71,19 +88,19 @@ export const formatDay = (iso: string) => {
 // Monthly budget per category, same amount every month. Missing key = no budget.
 export type Budgets = Record<string, number>;
 
-const BUDGETS_KEY = 'budgets:v1';
+const budgetsKey = (userId: string) => `budgets:${userId}`;
 
-export async function loadBudgets(): Promise<Budgets> {
+export async function loadBudgets(userId: string): Promise<Budgets> {
   try {
-    const raw = await AsyncStorage.getItem(BUDGETS_KEY);
+    const raw = await AsyncStorage.getItem(budgetsKey(userId));
     return raw ? (JSON.parse(raw) as Budgets) : {};
   } catch {
     return {};
   }
 }
 
-export async function saveBudgets(budgets: Budgets) {
-  await AsyncStorage.setItem(BUDGETS_KEY, JSON.stringify(budgets));
+export async function saveBudgets(userId: string, budgets: Budgets) {
+  await AsyncStorage.setItem(budgetsKey(userId), JSON.stringify(budgets));
 }
 
 export const WARN_RATIO = 0.8;

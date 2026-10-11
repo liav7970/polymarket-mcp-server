@@ -24,10 +24,20 @@
 
 אפשר גם לפתוח בדפדפן במחשב: `npx expo start --web`
 
+## חשבונות משתמשים (Supabase)
+האפליקציה דורשת הרשמה עם אימייל וסיסמה, והנתונים נשמרים ב-Supabase (יש תוכנית חינמית).
+1. יוצרים פרויקט ב-[supabase.com](https://supabase.com) (מומלץ אזור Frankfurt).
+2. **SQL Editor** → מדביקים את `supabase/schema.sql` → **Run**.
+3. **Authentication → URL Configuration**: Site URL וגם Redirect URLs = כתובת האתר.
+4. מעתיקים את `.env.example` ל-`.env` וממלאים את Project URL ו-anon key (מ-**Project Settings → API**).
+   לא להשתמש במפתח `service_role`, הוא סודי.
+5. לשימוש אמיתי: **Authentication → Emails → SMTP Settings** – לחבר שירות שליחת מיילים (למשל Resend),
+   כי שירות המייל המובנה של Supabase מוגבל לכמה מיילים בשעה.
+
 ## התקנה באייפון (חינם, בלי App Store)
 האפליקציה מתפרסמת כאתר ב-GitHub Pages ומוסיפים אותה למסך הבית:
 1. פרסום: `scripts/deploy-web.sh` (בונה ודוחף לענף `gh-pages`).
 2. פעם אחת ב-GitHub: Settings → Pages → Source: *Deploy from a branch* → `gh-pages` / `(root)` → Save.
-3. באייפון: לפתוח בספארי את `https://liav7970.github.io/polymarket-mcp-server/` → כפתור השיתוף → **הוסף למסך הבית**.
+3. באייפון: לפתוח בספארי את כתובת האתר (`https://<user>.github.io/<repo>/`) → כפתור השיתוף → **הוסף למסך הבית**.
 
 האפליקציה עובדת גם בלי אינטרנט. הנתונים נשמרים במכשיר בלבד.

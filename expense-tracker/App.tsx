@@ -1,6 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -32,13 +33,59 @@ import {
   sameMonth,
   saveBudgets,
   saveExpenses,
+  clearLocalCache,
 } from './src/data';
+import type { Session } from '@supabase/supabase-js';
+import { AuthScreen, NewPasswordScreen, NotConfiguredScreen } from './src/AuthScreens';
 import { confirmDestructive, notify } from './src/dialogs';
-import { APP_NAME, LAST_UPDATED, LEGAL_DOCS, LegalDoc, OPERATOR } from './src/legal';
+import { APP_NAME, LEGAL_DOCS, LegalDoc, OPERATOR } from './src/legal';
+import { LegalDocView } from './src/LegalDocView';
+import {
+  deleteAccount,
+  deleteAllData,
+  deleteExpenseRemote,
+  fetchAll,
+  newId,
+  replaceBudgets,
+  upsertExpense,
+} from './src/remote';
+import { isSupabaseConfigured, supabase } from './src/supabase';
 
 type Tab = 'summary' | 'add' | 'budget' | 'info';
 
 export default function App() {
+  // undefined = still checking for a saved session.
+  const [session, setSession] = useState<Session | null | undefined>(undefined);
+  const [recovering, setRecovering] = useState(false);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data } = supabase.auth.onAuthStateChange((event, s) => {
+      setSession(s);
+      if (event === 'PASSWORD_RECOVERY') setRecovering(true);
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  let content;
+  if (!isSupabaseConfigured) content = <NotConfiguredScreen />;
+  else if (session === undefined) content = <ActivityIndicator style={{ flex: 1 }} color="#1A5FD0" />;
+  else if (recovering && session) content = <NewPasswordScreen onDone={() => setRecovering(false)} />;
+  else if (!session) content = <AuthScreen />;
+  else content = <MainApp key={session.user.id} userId={session.user.id} email={session.user.email ?? ''} />;
+
+  return (
+    <SafeAreaProvider>
+      <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+        <StatusBar style="dark" />
+        {content}
+      </SafeAreaView>
+    </SafeAreaProvider>
+  );
+}
+
+function MainApp({ userId, email }: { userId: string; email: string }) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [budgets, setBudgets] = useState<Budgets>({});
   const [loaded, setLoaded] = useState(false);
@@ -50,29 +97,51 @@ export default function App() {
     setTab(t);
   };
 
+  // Show the local cache right away, then replace it with what the server has.
+  const refresh = () =>
+    fetchAll()
+      .then(({ expenses: e, budgets: b }) => {
+        setExpenses(e);
+        setBudgets(b);
+      })
+      .catch(() => {
+        // Offline: keep showing the cached data.
+      });
+
   useEffect(() => {
-    Promise.all([loadExpenses(), loadBudgets()]).then(([e, b]) => {
+    Promise.all([loadExpenses(userId), loadBudgets(userId)]).then(([e, b]) => {
       setExpenses(e);
       setBudgets(b);
       setLoaded(true);
+      refresh();
     });
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
-    if (loaded) saveExpenses(expenses);
-  }, [expenses, loaded]);
+    if (loaded) saveExpenses(userId, expenses);
+  }, [expenses, loaded, userId]);
 
   useEffect(() => {
-    if (loaded) saveBudgets(budgets);
-  }, [budgets, loaded]);
+    if (loaded) saveBudgets(userId, budgets);
+  }, [budgets, loaded, userId]);
+
+  // Changes are applied on screen immediately and sent to the server; if sending fails,
+  // tell the user and reload from the server so the screen matches what is really saved.
+  const sync = (op: Promise<unknown>) =>
+    op.catch(() => {
+      notify('השינוי לא נשמר', 'אין חיבור לשרת. בדוק את החיבור לאינטרנט ונסה שוב.');
+      refresh();
+    });
 
   const saveExpense = (e: Omit<Expense, 'id'>) => {
     const editedId = editing?.id;
+    const saved: Expense = { ...e, id: editedId ?? newId() };
     if (editedId) {
-      setExpenses((prev) => prev.map((x) => (x.id === editedId ? { ...e, id: editedId } : x)));
+      setExpenses((prev) => prev.map((x) => (x.id === editedId ? saved : x)));
     } else {
-      setExpenses((prev) => [{ ...e, id: Date.now().toString() }, ...prev]);
+      setExpenses((prev) => [saved, ...prev]);
     }
+    sync(upsertExpense(saved, userId));
     goTo('summary');
     warnIfOverBudget(e, editedId);
   };
@@ -104,6 +173,7 @@ export default function App() {
   const deleteExpense = (id: string) => {
     confirmDestructive('מחיקת הוצאה', 'למחוק את ההוצאה הזו?', 'מחק', () => {
       setExpenses((p) => p.filter((x) => x.id !== id));
+      sync(deleteExpenseRemote(id));
       if (editing?.id === id) goTo('summary');
     });
   };
@@ -114,61 +184,74 @@ export default function App() {
   };
 
   return (
-    <SafeAreaProvider>
-      <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-        <StatusBar style="dark" />
-        <View style={styles.content}>
-          {tab === 'summary' && (
-            <SummaryScreen expenses={expenses} budgets={budgets} onEdit={startEdit} onDelete={deleteExpense} />
-          )}
-          {tab === 'add' && (
-            <AddScreen
-              key={editing?.id ?? 'new'}
-              initial={editing}
-              onSave={saveExpense}
-              onDelete={editing ? () => deleteExpense(editing.id) : undefined}
-              onCancel={editing ? () => goTo('summary') : undefined}
-            />
-          )}
-          {tab === 'budget' && (
-            <BudgetScreen
-              budgets={budgets}
-              expenses={expenses}
-              onSave={(b) => {
-                setBudgets(b);
-                goTo('summary');
-              }}
-            />
-          )}
-          {tab === 'info' && (
-            <InfoScreen
-              onDeleteAll={() =>
-                confirmDestructive(
-                  'מחיקת כל הנתונים',
-                  'כל ההוצאות והתקציבים יימחקו מהמכשיר לצמיתות. לא ניתן לשחזר אותם.',
-                  'מחק הכול',
-                  () => {
-                    setExpenses([]);
-                    setBudgets({});
-                    goTo('summary');
-                  },
-                )
-              }
-            />
-          )}
-        </View>
-        <View style={styles.tabBar}>
-          <TabButton label="📊 סיכום" active={tab === 'summary'} onPress={() => goTo('summary')} />
-          <TabButton
-            label={editing ? '✏️ עריכה' : '➕ הוספה'}
-            active={tab === 'add'}
-            onPress={() => goTo('add')}
+    <>
+      <View style={styles.content}>
+        {tab === 'summary' && (
+          <SummaryScreen expenses={expenses} budgets={budgets} onEdit={startEdit} onDelete={deleteExpense} />
+        )}
+        {tab === 'add' && (
+          <AddScreen
+            key={editing?.id ?? 'new'}
+            initial={editing}
+            onSave={saveExpense}
+            onDelete={editing ? () => deleteExpense(editing.id) : undefined}
+            onCancel={editing ? () => goTo('summary') : undefined}
           />
-          <TabButton label="🎯 תקציב" active={tab === 'budget'} onPress={() => goTo('budget')} />
-          <TabButton label="ℹ️ מידע" active={tab === 'info'} onPress={() => goTo('info')} />
-        </View>
-      </SafeAreaView>
-    </SafeAreaProvider>
+        )}
+        {tab === 'budget' && (
+          <BudgetScreen
+            budgets={budgets}
+            expenses={expenses}
+            onSave={(b) => {
+              setBudgets(b);
+              sync(replaceBudgets(b, userId));
+              goTo('summary');
+            }}
+          />
+        )}
+        {tab === 'info' && (
+          <InfoScreen
+            email={email}
+            onSignOut={() =>
+              confirmDestructive('התנתקות', 'להתנתק מהחשבון במכשיר הזה?', 'התנתק', async () => {
+                await clearLocalCache(userId);
+                await supabase.auth.signOut({ scope: 'local' });
+              })
+            }
+            onDeleteAll={() =>
+              confirmDestructive(
+                'מחיקת כל הנתונים',
+                'כל ההוצאות והתקציבים יימחקו מהחשבון לצמיתות. לא ניתן לשחזר אותם. החשבון עצמו יישאר.',
+                'מחק הכול',
+                () => {
+                  setExpenses([]);
+                  setBudgets({});
+                  sync(deleteAllData(userId));
+                  goTo('summary');
+                },
+              )
+            }
+            onDeleteAccount={() =>
+              confirmDestructive(
+                'מחיקת החשבון',
+                'החשבון וכל הנתונים שבו יימחקו לצמיתות, כולל ההוצאות והתקציבים. לא ניתן לשחזר אותם.',
+                'מחק את החשבון',
+                () =>
+                  deleteAccount()
+                    .then(() => clearLocalCache(userId))
+                    .catch(() => notify('המחיקה נכשלה', 'אין חיבור לשרת. נסה שוב מאוחר יותר.')),
+              )
+            }
+          />
+        )}
+      </View>
+      <View style={styles.tabBar}>
+        <TabButton label="📊 סיכום" active={tab === 'summary'} onPress={() => goTo('summary')} />
+        <TabButton label={editing ? '✏️ עריכה' : '➕ הוספה'} active={tab === 'add'} onPress={() => goTo('add')} />
+        <TabButton label="🎯 תקציב" active={tab === 'budget'} onPress={() => goTo('budget')} />
+        <TabButton label="ℹ️ מידע" active={tab === 'info'} onPress={() => goTo('info')} />
+      </View>
+    </>
   );
 }
 
@@ -236,11 +319,21 @@ function SummaryScreen({
       ListHeaderComponent={
         <View>
           <View style={styles.monthNav}>
-            <Pressable accessibilityRole="button" onPress={() => shiftMonth(-1)} hitSlop={12} accessibilityLabel="חודש קודם">
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => shiftMonth(-1)}
+              hitSlop={12}
+              accessibilityLabel="חודש קודם"
+            >
               <Text style={styles.arrow}>→</Text>
             </Pressable>
             <Text style={styles.monthTitle}>{monthLabel(year, month)}</Text>
-            <Pressable accessibilityRole="button" onPress={() => shiftMonth(1)} hitSlop={12} accessibilityLabel="חודש הבא">
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => shiftMonth(1)}
+              hitSlop={12}
+              accessibilityLabel="חודש הבא"
+            >
               <Text style={styles.arrow}>←</Text>
             </Pressable>
           </View>
@@ -299,9 +392,7 @@ function SummaryScreen({
                     </View>
                     {budget ? (
                       <Text style={[styles.subText, level !== 'ok' && { color: LEVEL_TEXT[level!] }]}>
-                        {sum <= budget
-                          ? `נשארו ${formatMoney(budget - sum)}`
-                          : `חריגה של ${formatMoney(sum - budget)}`}
+                        {sum <= budget ? `נשארו ${formatMoney(budget - sum)}` : `חריגה של ${formatMoney(sum - budget)}`}
                       </Text>
                     ) : null}
                   </View>
@@ -310,9 +401,7 @@ function SummaryScreen({
             </View>
           )}
 
-          <Text style={[styles.sectionTitle, { marginTop: 8 }]}>
-            {monthly.length ? 'כל ההוצאות' : ''}
-          </Text>
+          <Text style={[styles.sectionTitle, { marginTop: 8 }]}>{monthly.length ? 'כל ההוצאות' : ''}</Text>
           {monthly.length ? (
             <Text style={[styles.subText, { marginTop: -6, marginBottom: 10 }]}>לחיצה לעריכה · לחיצה ארוכה למחיקה</Text>
           ) : null}
@@ -324,7 +413,12 @@ function SummaryScreen({
       renderItem={({ item }) => {
         const cat = categoryById(item.categoryId);
         return (
-          <Pressable accessibilityRole="button" onPress={() => onEdit(item)} onLongPress={() => onDelete(item.id)} style={styles.expenseRow}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => onEdit(item)}
+            onLongPress={() => onDelete(item.id)}
+            style={styles.expenseRow}
+          >
             <View style={[styles.emojiBubble, { backgroundColor: cat.color + '22' }]}>
               <Text style={{ fontSize: 20 }}>{cat.emoji}</Text>
             </View>
@@ -402,7 +496,7 @@ function AddScreen({
             const selected = c.id === categoryId;
             return (
               <Pressable
- accessibilityRole="button"
+                accessibilityRole="button"
                 key={c.id}
                 onPress={() => setCategoryId(c.id)}
                 accessibilityState={{ selected }}
@@ -418,12 +512,17 @@ function AddScreen({
 
         <Text style={styles.sectionTitle}>תאריך</Text>
         <View style={styles.dateBox}>
-          <Pressable accessibilityRole="button" onPress={() => setDay(date, -1)} hitSlop={10} accessibilityLabel="יום קודם">
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setDay(date, -1)}
+            hitSlop={10}
+            accessibilityLabel="יום קודם"
+          >
             <Text style={styles.arrow}>→</Text>
           </Pressable>
           <Text style={styles.dateText}>{formatFullDay(date)}</Text>
           <Pressable
- accessibilityRole="button"
+            accessibilityRole="button"
             onPress={() => setDay(date, 1)}
             hitSlop={10}
             disabled={isToday}
@@ -442,7 +541,7 @@ function AddScreen({
             const selected = isSameDay(date, new Date(today.getFullYear(), today.getMonth(), today.getDate() + delta));
             return (
               <Pressable
- accessibilityRole="button"
+                accessibilityRole="button"
                 key={label}
                 onPress={() => setDay(today, delta)}
                 accessibilityState={{ selected }}
@@ -482,39 +581,36 @@ function AddScreen({
   );
 }
 
-function InfoScreen({ onDeleteAll }: { onDeleteAll: () => void }) {
+function InfoScreen({
+  email,
+  onSignOut,
+  onDeleteAll,
+  onDeleteAccount,
+}: {
+  email: string;
+  onSignOut: () => void;
+  onDeleteAll: () => void;
+  onDeleteAccount: () => void;
+}) {
   const [open, setOpen] = useState<LegalDoc | null>(null);
 
-  if (open) {
-    return (
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
-        <Pressable accessibilityRole="button" onPress={() => setOpen(null)} hitSlop={10} style={{ marginBottom: 12 }}>
-          <Text style={[styles.text, { color: '#1A5FD0', fontWeight: '600' }]}>→ חזרה</Text>
-        </Pressable>
-        <Text accessibilityRole="header" style={styles.docTitle}>
-          {open.title}
-        </Text>
-        {open.sections.map((sec) => (
-          <View key={sec.heading} style={{ marginBottom: 16 }}>
-            <Text accessibilityRole="header" style={styles.docHeading}>
-              {sec.heading}
-            </Text>
-            <Text style={styles.docBody}>{sec.body}</Text>
-          </View>
-        ))}
-        <Text style={styles.subText}>עדכון אחרון: {LAST_UPDATED}</Text>
-      </ScrollView>
-    );
-  }
+  if (open) return <LegalDocView doc={open} onBack={() => setOpen(null)} />;
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
       <Text accessibilityRole="header" style={styles.docTitle}>
         {APP_NAME}
       </Text>
-      <Text style={[styles.docBody, { marginBottom: 16 }]}>
-        מעקב הוצאות ותקציב אישי, חינם. ללא הרשמה, ללא תשלום וללא איסוף מידע: כל הנתונים נשמרים רק במכשיר שלך.
-      </Text>
+
+      <View style={styles.card}>
+        <Text accessibilityRole="header" style={styles.sectionTitle}>
+          החשבון שלי
+        </Text>
+        <Text style={styles.text}>{email}</Text>
+        <Pressable accessibilityRole="button" style={styles.secondaryBtn} onPress={onSignOut}>
+          <Text style={styles.secondaryText}>התנתקות</Text>
+        </Pressable>
+      </View>
 
       <View style={styles.card}>
         {LEGAL_DOCS.map((doc, i) => (
@@ -540,13 +636,16 @@ function InfoScreen({ onDeleteAll }: { onDeleteAll: () => void }) {
 
       <View style={styles.card}>
         <Text accessibilityRole="header" style={styles.sectionTitle}>
-          הנתונים שלך
+          הנתונים שלי
         </Text>
         <Text style={[styles.docBody, { marginBottom: 8 }]}>
-          הנתונים נשמרים רק במכשיר הזה ואינם מגובים. מחיקת האפליקציה או ניקוי נתוני הדפדפן ימחקו אותם.
+          הנתונים נשמרים בחשבון שלך ומסונכרנים בין המכשירים שבהם אתה מחובר.
         </Text>
         <Pressable accessibilityRole="button" style={styles.secondaryBtn} onPress={onDeleteAll}>
           <Text style={[styles.secondaryText, { color: '#C92A2A' }]}>🗑 מחיקת כל הנתונים</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" style={styles.secondaryBtn} onPress={onDeleteAccount}>
+          <Text style={[styles.secondaryText, { color: '#C92A2A' }]}>מחיקת החשבון לצמיתות</Text>
         </Pressable>
       </View>
     </ScrollView>
@@ -571,7 +670,9 @@ function MonthlyTrend({
 }) {
   const now = new Date();
   const viewedIsOlder = year * 12 + month < now.getFullYear() * 12 + now.getMonth() - (TREND_MONTHS - 1);
-  const end = viewedIsOlder ? new Date(year, month + TREND_MONTHS - 1, 1) : new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = viewedIsOlder
+    ? new Date(year, month + TREND_MONTHS - 1, 1)
+    : new Date(now.getFullYear(), now.getMonth(), 1);
 
   const bars = useMemo(() => {
     const out: { year: number; month: number; total: number }[] = [];
@@ -618,7 +719,7 @@ function MonthlyTrend({
           const h = (b.total / max) * CHART_HEIGHT;
           return (
             <Pressable
- accessibilityRole="button"
+              accessibilityRole="button"
               key={`${b.year}-${b.month}`}
               style={styles.barCol}
               onPress={() => onSelect(b.year, b.month)}
@@ -642,7 +743,12 @@ function MonthlyTrend({
         {bars.map((b) => {
           const selected = b.year === year && b.month === month;
           return (
-            <Pressable accessibilityRole="button" key={`${b.year}-${b.month}`} style={{ flex: 1 }} onPress={() => onSelect(b.year, b.month)}>
+            <Pressable
+              accessibilityRole="button"
+              key={`${b.year}-${b.month}`}
+              style={{ flex: 1 }}
+              onPress={() => onSelect(b.year, b.month)}
+            >
               <Text style={[styles.barLabel, selected && styles.barLabelSelected]}>{monthShort(b.month)}</Text>
             </Pressable>
           );
@@ -746,7 +852,13 @@ const styles = StyleSheet.create({
   text: { fontSize: 15, color: '#1F2933', textAlign: 'right' },
   textBold: { fontSize: 15, color: '#1F2933', fontWeight: '700', textAlign: 'right' },
   subText: { fontSize: 13, color: '#616E7C', textAlign: 'right', marginTop: 2 },
-  barTrack: { height: 8, backgroundColor: '#EEF2F6', borderRadius: 4, overflow: 'hidden', flexDirection: 'row-reverse' },
+  barTrack: {
+    height: 8,
+    backgroundColor: '#EEF2F6',
+    borderRadius: 4,
+    overflow: 'hidden',
+    flexDirection: 'row-reverse',
+  },
   barFill: { height: 8, borderRadius: 4 },
 
   expenseRow: {
