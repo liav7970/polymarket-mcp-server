@@ -12,10 +12,6 @@ import re
 p = 'dist/index.html'
 s = open(p, encoding='utf-8').read()
 s = s.replace('<html lang="en">', '<html lang="he">')
-s = s.replace(
-    'content="width=device-width, initial-scale=1, shrink-to-fit=no"',
-    'content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"',
-)
 # Relative paths so the app works from any sub-path.
 s = re.sub(r'<link rel="icon" href="/favicon.ico"/>', '<link rel="icon" href="favicon.ico"/>', s)
 head = '''

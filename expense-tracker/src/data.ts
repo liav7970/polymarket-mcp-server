@@ -95,6 +95,9 @@ export const budgetLevel = (spent: number, budget: number): BudgetLevel =>
 
 export const LEVEL_COLOR: Record<BudgetLevel, string> = { ok: '#2BB673', warn: '#F08C00', over: '#D9534F' };
 
+// Darker variants for text, to keep at least 4.5:1 contrast on white (accessibility).
+export const LEVEL_TEXT: Record<BudgetLevel, string> = { ok: '#1F2933', warn: '#B35C00', over: '#C92A2A' };
+
 export const sameMonth = (iso: string, year: number, month: number) => {
   const d = new Date(iso);
   return d.getFullYear() === year && d.getMonth() === month;

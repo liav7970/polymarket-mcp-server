@@ -17,6 +17,7 @@ import {
   CATEGORIES,
   Expense,
   LEVEL_COLOR,
+  LEVEL_TEXT,
   budgetLevel,
   categoryById,
   formatDay,
@@ -33,8 +34,9 @@ import {
   saveExpenses,
 } from './src/data';
 import { confirmDestructive, notify } from './src/dialogs';
+import { APP_NAME, LAST_UPDATED, LEGAL_DOCS, LegalDoc, OPERATOR } from './src/legal';
 
-type Tab = 'summary' | 'add' | 'budget';
+type Tab = 'summary' | 'add' | 'budget' | 'info';
 
 export default function App() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -138,6 +140,22 @@ export default function App() {
               }}
             />
           )}
+          {tab === 'info' && (
+            <InfoScreen
+              onDeleteAll={() =>
+                confirmDestructive(
+                  'מחיקת כל הנתונים',
+                  'כל ההוצאות והתקציבים יימחקו מהמכשיר לצמיתות. לא ניתן לשחזר אותם.',
+                  'מחק הכול',
+                  () => {
+                    setExpenses([]);
+                    setBudgets({});
+                    goTo('summary');
+                  },
+                )
+              }
+            />
+          )}
         </View>
         <View style={styles.tabBar}>
           <TabButton label="📊 סיכום" active={tab === 'summary'} onPress={() => goTo('summary')} />
@@ -147,6 +165,7 @@ export default function App() {
             onPress={() => goTo('add')}
           />
           <TabButton label="🎯 תקציב" active={tab === 'budget'} onPress={() => goTo('budget')} />
+          <TabButton label="ℹ️ מידע" active={tab === 'info'} onPress={() => goTo('info')} />
         </View>
       </SafeAreaView>
     </SafeAreaProvider>
@@ -155,7 +174,12 @@ export default function App() {
 
 function TabButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   return (
-    <Pressable style={[styles.tabBtn, active && styles.tabBtnActive]} onPress={onPress}>
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityState={{ selected: active }}
+      style={[styles.tabBtn, active && styles.tabBtnActive]}
+      onPress={onPress}
+    >
       <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
     </Pressable>
   );
@@ -212,11 +236,11 @@ function SummaryScreen({
       ListHeaderComponent={
         <View>
           <View style={styles.monthNav}>
-            <Pressable onPress={() => shiftMonth(-1)} hitSlop={12} accessibilityLabel="חודש קודם">
+            <Pressable accessibilityRole="button" onPress={() => shiftMonth(-1)} hitSlop={12} accessibilityLabel="חודש קודם">
               <Text style={styles.arrow}>→</Text>
             </Pressable>
             <Text style={styles.monthTitle}>{monthLabel(year, month)}</Text>
-            <Pressable onPress={() => shiftMonth(1)} hitSlop={12} accessibilityLabel="חודש הבא">
+            <Pressable accessibilityRole="button" onPress={() => shiftMonth(1)} hitSlop={12} accessibilityLabel="חודש הבא">
               <Text style={styles.arrow}>←</Text>
             </Pressable>
           </View>
@@ -257,7 +281,7 @@ function SummaryScreen({
                         {cat.emoji} {cat.name}
                         {level === 'warn' ? '  ⚠️' : level === 'over' ? '  🚨' : ''}
                       </Text>
-                      <Text style={[styles.textBold, level && level !== 'ok' && { color: LEVEL_COLOR[level] }]}>
+                      <Text style={[styles.textBold, level && level !== 'ok' && { color: LEVEL_TEXT[level] }]}>
                         {formatMoney(sum)}
                         {budget ? <Text style={styles.subText}> / {formatMoney(budget)}</Text> : null}
                       </Text>
@@ -274,7 +298,7 @@ function SummaryScreen({
                       />
                     </View>
                     {budget ? (
-                      <Text style={[styles.subText, level !== 'ok' && { color: LEVEL_COLOR[level!] }]}>
+                      <Text style={[styles.subText, level !== 'ok' && { color: LEVEL_TEXT[level!] }]}>
                         {sum <= budget
                           ? `נשארו ${formatMoney(budget - sum)}`
                           : `חריגה של ${formatMoney(sum - budget)}`}
@@ -300,7 +324,7 @@ function SummaryScreen({
       renderItem={({ item }) => {
         const cat = categoryById(item.categoryId);
         return (
-          <Pressable onPress={() => onEdit(item)} onLongPress={() => onDelete(item.id)} style={styles.expenseRow}>
+          <Pressable accessibilityRole="button" onPress={() => onEdit(item)} onLongPress={() => onDelete(item.id)} style={styles.expenseRow}>
             <View style={[styles.emojiBubble, { backgroundColor: cat.color + '22' }]}>
               <Text style={{ fontSize: 20 }}>{cat.emoji}</Text>
             </View>
@@ -365,8 +389,9 @@ function AddScreen({
             value={amount}
             onChangeText={setAmount}
             keyboardType="decimal-pad"
+            accessibilityLabel="סכום בשקלים"
             placeholder="0"
-            placeholderTextColor="#B8C2CC"
+            placeholderTextColor="#6B7785"
             autoFocus={!initial}
           />
         </View>
@@ -377,12 +402,15 @@ function AddScreen({
             const selected = c.id === categoryId;
             return (
               <Pressable
+ accessibilityRole="button"
                 key={c.id}
                 onPress={() => setCategoryId(c.id)}
+                accessibilityState={{ selected }}
+                accessibilityLabel={c.name}
                 style={[styles.catChip, selected && { borderColor: c.color, backgroundColor: c.color + '1A' }]}
               >
                 <Text style={{ fontSize: 24 }}>{c.emoji}</Text>
-                <Text style={[styles.catName, selected && { color: c.color, fontWeight: '700' }]}>{c.name}</Text>
+                <Text style={[styles.catName, selected && { color: '#1F2933', fontWeight: '700' }]}>{c.name}</Text>
               </Pressable>
             );
           })}
@@ -390,11 +418,12 @@ function AddScreen({
 
         <Text style={styles.sectionTitle}>תאריך</Text>
         <View style={styles.dateBox}>
-          <Pressable onPress={() => setDay(date, -1)} hitSlop={10} accessibilityLabel="יום קודם">
+          <Pressable accessibilityRole="button" onPress={() => setDay(date, -1)} hitSlop={10} accessibilityLabel="יום קודם">
             <Text style={styles.arrow}>→</Text>
           </Pressable>
           <Text style={styles.dateText}>{formatFullDay(date)}</Text>
           <Pressable
+ accessibilityRole="button"
             onPress={() => setDay(date, 1)}
             hitSlop={10}
             disabled={isToday}
@@ -413,8 +442,10 @@ function AddScreen({
             const selected = isSameDay(date, new Date(today.getFullYear(), today.getMonth(), today.getDate() + delta));
             return (
               <Pressable
+ accessibilityRole="button"
                 key={label}
                 onPress={() => setDay(today, delta)}
+                accessibilityState={{ selected }}
                 style={[styles.quickChip, selected && styles.quickChipSelected]}
               >
                 <Text style={[styles.quickChipText, selected && styles.quickChipTextSelected]}>{label}</Text>
@@ -429,24 +460,96 @@ function AddScreen({
           value={note}
           onChangeText={setNote}
           placeholder="למשל: סופר שבועי"
-          placeholderTextColor="#B8C2CC"
+          accessibilityLabel="הערה"
+          placeholderTextColor="#6B7785"
         />
 
-        <Pressable style={styles.saveBtn} onPress={save}>
+        <Pressable accessibilityRole="button" style={styles.saveBtn} onPress={save}>
           <Text style={styles.saveText}>{initial ? 'שמירת שינויים' : 'שמירה'}</Text>
         </Pressable>
         {onCancel && (
-          <Pressable style={styles.secondaryBtn} onPress={onCancel}>
+          <Pressable accessibilityRole="button" style={styles.secondaryBtn} onPress={onCancel}>
             <Text style={styles.secondaryText}>ביטול</Text>
           </Pressable>
         )}
         {onDelete && (
-          <Pressable style={styles.secondaryBtn} onPress={onDelete}>
+          <Pressable accessibilityRole="button" style={styles.secondaryBtn} onPress={onDelete}>
             <Text style={[styles.secondaryText, { color: '#D9534F' }]}>🗑 מחיקת ההוצאה</Text>
           </Pressable>
         )}
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+function InfoScreen({ onDeleteAll }: { onDeleteAll: () => void }) {
+  const [open, setOpen] = useState<LegalDoc | null>(null);
+
+  if (open) {
+    return (
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+        <Pressable accessibilityRole="button" onPress={() => setOpen(null)} hitSlop={10} style={{ marginBottom: 12 }}>
+          <Text style={[styles.text, { color: '#1A5FD0', fontWeight: '600' }]}>→ חזרה</Text>
+        </Pressable>
+        <Text accessibilityRole="header" style={styles.docTitle}>
+          {open.title}
+        </Text>
+        {open.sections.map((sec) => (
+          <View key={sec.heading} style={{ marginBottom: 16 }}>
+            <Text accessibilityRole="header" style={styles.docHeading}>
+              {sec.heading}
+            </Text>
+            <Text style={styles.docBody}>{sec.body}</Text>
+          </View>
+        ))}
+        <Text style={styles.subText}>עדכון אחרון: {LAST_UPDATED}</Text>
+      </ScrollView>
+    );
+  }
+
+  return (
+    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+      <Text accessibilityRole="header" style={styles.docTitle}>
+        {APP_NAME}
+      </Text>
+      <Text style={[styles.docBody, { marginBottom: 16 }]}>
+        אפליקציה חינמית לניהול הוצאות אישיות. ללא הרשמה, ללא תשלום וללא איסוף מידע: כל הנתונים נשמרים רק במכשיר שלך.
+      </Text>
+
+      <View style={styles.card}>
+        {LEGAL_DOCS.map((doc, i) => (
+          <Pressable
+            key={doc.id}
+            accessibilityRole="button"
+            onPress={() => setOpen(doc)}
+            style={[styles.linkRow, i < LEGAL_DOCS.length - 1 && styles.linkRowBorder]}
+          >
+            <Text style={styles.text}>{doc.title}</Text>
+            <Text style={[styles.text, { color: '#616E7C' }]}>‹</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <View style={styles.card}>
+        <Text accessibilityRole="header" style={styles.sectionTitle}>
+          יצירת קשר
+        </Text>
+        <Text style={styles.text}>{OPERATOR.name}</Text>
+        <Text style={styles.text}>{OPERATOR.email}</Text>
+      </View>
+
+      <View style={styles.card}>
+        <Text accessibilityRole="header" style={styles.sectionTitle}>
+          הנתונים שלך
+        </Text>
+        <Text style={[styles.docBody, { marginBottom: 8 }]}>
+          הנתונים נשמרים רק במכשיר הזה ואינם מגובים. מחיקת האפליקציה או ניקוי נתוני הדפדפן ימחקו אותם.
+        </Text>
+        <Pressable accessibilityRole="button" style={styles.secondaryBtn} onPress={onDeleteAll}>
+          <Text style={[styles.secondaryText, { color: '#C92A2A' }]}>🗑 מחיקת כל הנתונים</Text>
+        </Pressable>
+      </View>
+    </ScrollView>
   );
 }
 
@@ -515,6 +618,7 @@ function MonthlyTrend({
           const h = (b.total / max) * CHART_HEIGHT;
           return (
             <Pressable
+ accessibilityRole="button"
               key={`${b.year}-${b.month}`}
               style={styles.barCol}
               onPress={() => onSelect(b.year, b.month)}
@@ -526,7 +630,7 @@ function MonthlyTrend({
               <View
                 style={[
                   styles.trendBar,
-                  { height: Math.max(h, b.total > 0 ? 3 : 0), backgroundColor: selected ? '#1F6FEB' : '#A9C4F5' },
+                  { height: Math.max(h, b.total > 0 ? 3 : 0), backgroundColor: selected ? '#1A5FD0' : '#A9C4F5' },
                 ]}
               />
             </Pressable>
@@ -538,7 +642,7 @@ function MonthlyTrend({
         {bars.map((b) => {
           const selected = b.year === year && b.month === month;
           return (
-            <Pressable key={`${b.year}-${b.month}`} style={{ flex: 1 }} onPress={() => onSelect(b.year, b.month)}>
+            <Pressable accessibilityRole="button" key={`${b.year}-${b.month}`} style={{ flex: 1 }} onPress={() => onSelect(b.year, b.month)}>
               <Text style={[styles.barLabel, selected && styles.barLabelSelected]}>{monthShort(b.month)}</Text>
             </Pressable>
           );
@@ -596,13 +700,14 @@ function BudgetScreen({
                   onChangeText={(t) => setDraft((d) => ({ ...d, [c.id]: t }))}
                   keyboardType="decimal-pad"
                   placeholder="ללא"
-                  placeholderTextColor="#B8C2CC"
+                  accessibilityLabel={`תקציב חודשי ל${c.name}`}
+                  placeholderTextColor="#6B7785"
                 />
               </View>
             </View>
           );
         })}
-        <Pressable style={[styles.saveBtn, { marginTop: 12 }]} onPress={save}>
+        <Pressable accessibilityRole="button" style={[styles.saveBtn, { marginTop: 12 }]} onPress={save}>
           <Text style={styles.saveText}>שמירת תקציב</Text>
         </Pressable>
       </ScrollView>
@@ -622,25 +727,25 @@ const styles = StyleSheet.create({
     borderTopColor: '#D9E0E8',
   },
   tabBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
-  tabBtnActive: { backgroundColor: '#1F6FEB' },
-  tabText: { fontSize: 16, color: '#52606D', fontWeight: '600' },
+  tabBtnActive: { backgroundColor: '#1A5FD0' },
+  tabText: { fontSize: 14, color: '#52606D', fontWeight: '600' },
   tabTextActive: { color: '#fff' },
 
   monthNav: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  arrow: { fontSize: 26, color: '#1F6FEB', paddingHorizontal: 8 },
+  arrow: { fontSize: 26, color: '#1A5FD0', paddingHorizontal: 8 },
   monthTitle: { fontSize: 20, fontWeight: '700', color: '#1F2933' },
 
-  totalCard: { backgroundColor: '#1F6FEB', borderRadius: 16, padding: 20, marginBottom: 16, alignItems: 'flex-end' },
-  totalLabel: { color: '#DCE8FF', fontSize: 14 },
+  totalCard: { backgroundColor: '#1A5FD0', borderRadius: 16, padding: 20, marginBottom: 16, alignItems: 'flex-end' },
+  totalLabel: { color: '#FFFFFF', fontSize: 14 },
   totalValue: { color: '#fff', fontSize: 34, fontWeight: '800', marginTop: 4 },
-  totalSub: { color: '#DCE8FF', fontSize: 14, marginTop: 6 },
+  totalSub: { color: '#FFFFFF', fontSize: 14, marginTop: 6 },
 
   card: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 16 },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#1F2933', marginBottom: 10, textAlign: 'right' },
   rowBetween: { flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 4 },
   text: { fontSize: 15, color: '#1F2933', textAlign: 'right' },
   textBold: { fontSize: 15, color: '#1F2933', fontWeight: '700', textAlign: 'right' },
-  subText: { fontSize: 13, color: '#7B8794', textAlign: 'right', marginTop: 2 },
+  subText: { fontSize: 13, color: '#616E7C', textAlign: 'right', marginTop: 2 },
   barTrack: { height: 8, backgroundColor: '#EEF2F6', borderRadius: 4, overflow: 'hidden', flexDirection: 'row-reverse' },
   barFill: { height: 8, borderRadius: 4 },
 
@@ -653,7 +758,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   emojiBubble: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
-  empty: { textAlign: 'center', color: '#7B8794', marginTop: 24, fontSize: 15, lineHeight: 22 },
+  empty: { textAlign: 'center', color: '#616E7C', marginTop: 24, fontSize: 15, lineHeight: 22 },
 
   amountBox: {
     flexDirection: 'row-reverse',
@@ -663,7 +768,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 20,
   },
-  currency: { fontSize: 32, color: '#7B8794', marginLeft: 8 },
+  currency: { fontSize: 32, color: '#616E7C', marginLeft: 8 },
   amountInput: { flex: 1, fontSize: 40, fontWeight: '800', color: '#1F2933', paddingVertical: 14, textAlign: 'right' },
 
   grid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
@@ -687,7 +792,7 @@ const styles = StyleSheet.create({
     color: '#1F2933',
     marginBottom: 24,
   },
-  saveBtn: { backgroundColor: '#1F6FEB', borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
+  saveBtn: { backgroundColor: '#1A5FD0', borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
   dateBox: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -701,18 +806,23 @@ const styles = StyleSheet.create({
   dateText: { fontSize: 16, fontWeight: '700', color: '#1F2933' },
   quickDates: { flexDirection: 'row-reverse', gap: 8, marginBottom: 20 },
   quickChip: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, backgroundColor: '#fff' },
-  quickChipSelected: { backgroundColor: '#1F6FEB' },
+  quickChipSelected: { backgroundColor: '#1A5FD0' },
   quickChipText: { fontSize: 14, color: '#52606D', fontWeight: '600' },
   quickChipTextSelected: { color: '#fff' },
   secondaryBtn: { paddingVertical: 14, alignItems: 'center', marginTop: 8 },
   secondaryText: { fontSize: 16, color: '#52606D', fontWeight: '600' },
+  docTitle: { fontSize: 22, fontWeight: '800', color: '#1F2933', textAlign: 'right', marginBottom: 12 },
+  docHeading: { fontSize: 16, fontWeight: '700', color: '#1F2933', textAlign: 'right', marginBottom: 4 },
+  docBody: { fontSize: 15, lineHeight: 23, color: '#323F4B', textAlign: 'right' },
+  linkRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', paddingVertical: 14 },
+  linkRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#D9E0E8' },
   chartArea: { flexDirection: 'row-reverse', alignItems: 'flex-end', height: CHART_HEIGHT + 22 },
   barCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', height: '100%' },
   trendBar: { width: '55%', borderTopLeftRadius: 4, borderTopRightRadius: 4 },
   barValue: { fontSize: 11, fontWeight: '700', color: '#1F2933', marginBottom: 4 },
   chartBaseline: { height: 1, backgroundColor: '#D9E0E8' },
   chartLabels: { flexDirection: 'row-reverse', marginTop: 6 },
-  barLabel: { textAlign: 'center', paddingVertical: 4, fontSize: 12, color: '#7B8794' },
+  barLabel: { textAlign: 'center', paddingVertical: 4, fontSize: 12, color: '#616E7C' },
   barLabelSelected: { color: '#1F2933', fontWeight: '700' },
   budgetRow: {
     flexDirection: 'row-reverse',
