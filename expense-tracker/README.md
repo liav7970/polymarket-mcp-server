@@ -23,3 +23,11 @@
 3. סורקים את קוד ה-QR שמופיע: באייפון עם המצלמה, ובאנדרואיד מתוך Expo Go.
 
 אפשר גם לפתוח בדפדפן במחשב: `npx expo start --web`
+
+## התקנה באייפון (חינם, בלי App Store)
+האפליקציה מתפרסמת כאתר ב-GitHub Pages ומוסיפים אותה למסך הבית:
+1. פרסום: `scripts/deploy-web.sh` (בונה ודוחף לענף `gh-pages`).
+2. פעם אחת ב-GitHub: Settings → Pages → Source: *Deploy from a branch* → `gh-pages` / `(root)` → Save.
+3. באייפון: לפתוח בספארי את `https://liav7970.github.io/polymarket-mcp-server/` → כפתור השיתוף → **הוסף למסך הבית**.
+
+האפליקציה עובדת גם בלי אינטרנט. הנתונים נשמרים במכשיר בלבד.

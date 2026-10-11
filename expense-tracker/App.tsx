@@ -1,7 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -33,6 +32,7 @@ import {
   saveBudgets,
   saveExpenses,
 } from './src/data';
+import { confirmDestructive, notify } from './src/dialogs';
 
 type Tab = 'summary' | 'add' | 'budget';
 
@@ -87,12 +87,12 @@ export default function App() {
     const levelBefore = budgetLevel(before, budget);
     const levelAfter = budgetLevel(after, budget);
     if (levelAfter === 'over') {
-      Alert.alert(
+      notify(
         `🚨 חרגת מהתקציב: ${cat.name}`,
         `הוצאת החודש ${formatMoney(after)} מתוך ${formatMoney(budget)} (חריגה של ${formatMoney(after - budget)}).`,
       );
     } else if (levelAfter === 'warn' && levelBefore === 'ok') {
-      Alert.alert(
+      notify(
         `⚠️ מתקרב לגבול: ${cat.name}`,
         `ניצלת ${Math.round((after / budget) * 100)}% מהתקציב. נשארו ${formatMoney(budget - after)} עד סוף החודש.`,
       );
@@ -100,17 +100,10 @@ export default function App() {
   };
 
   const deleteExpense = (id: string) => {
-    Alert.alert('מחיקת הוצאה', 'למחוק את ההוצאה הזו?', [
-      { text: 'ביטול', style: 'cancel' },
-      {
-        text: 'מחק',
-        style: 'destructive',
-        onPress: () => {
-          setExpenses((p) => p.filter((x) => x.id !== id));
-          if (editing?.id === id) goTo('summary');
-        },
-      },
-    ]);
+    confirmDestructive('מחיקת הוצאה', 'למחוק את ההוצאה הזו?', 'מחק', () => {
+      setExpenses((p) => p.filter((x) => x.id !== id));
+      if (editing?.id === id) goTo('summary');
+    });
   };
 
   const startEdit = (e: Expense) => {
@@ -355,7 +348,7 @@ function AddScreen({
   const save = () => {
     const value = parseFloat(amount.replace(',', '.'));
     if (!value || value <= 0) {
-      Alert.alert('סכום לא תקין', 'נא להזין סכום גדול מאפס');
+      notify('סכום לא תקין', 'נא להזין סכום גדול מאפס');
       return;
     }
     onSave({ amount: value, categoryId, note: note.trim(), date: date.toISOString() });
@@ -495,7 +488,9 @@ function MonthlyTrend({
   const idx = bars.findIndex((b) => b.year === year && b.month === month);
   const current = bars[idx];
   const prev = idx > 0 ? bars[idx - 1] : undefined;
-  const avg = bars.reduce((s, b) => s + b.total, 0) / bars.length;
+  // Average only over months that have spending, so a new user's empty months don't drag it down.
+  const activeBars = bars.filter((b) => b.total > 0);
+  const avg = activeBars.reduce((s, b) => s + b.total, 0) / activeBars.length;
 
   let comparison = '';
   if (current && prev && prev.total > 0) {
@@ -510,7 +505,9 @@ function MonthlyTrend({
     <View style={styles.card}>
       <Text style={styles.sectionTitle}>הוצאות ב-{TREND_MONTHS} חודשים</Text>
       {comparison ? <Text style={[styles.text, { marginBottom: 2 }]}>{comparison}</Text> : null}
-      <Text style={[styles.subText, { marginBottom: 12 }]}>ממוצע חודשי: {formatMoney(Math.round(avg))}</Text>
+      <Text style={[styles.subText, { marginBottom: 12 }]}>
+        {activeBars.length > 1 ? `ממוצע חודשי: ${formatMoney(Math.round(avg))}` : ' '}
+      </Text>
 
       <View style={styles.chartArea}>
         {bars.map((b) => {
